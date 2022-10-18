@@ -2,14 +2,13 @@
 // Licensed under the MIT License.
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use anyhow::Result;
-use serde::{Deserialize, Serialize};
 
 use crate::{ModOff, PdbCache, SrcLine};
 
-#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Default)]
 pub struct SrcView(BTreeMap<String, PdbCache>);
 
 /// A SrcView is a collection of zero or more PdbCaches for easy querying. It stores all
@@ -113,7 +112,7 @@ impl SrcView {
     /// ```
     pub fn modoff(&self, modoff: &ModOff) -> Option<SrcLine> {
         match self.0.get(&modoff.module) {
-            Some(cache) => cache.offset(&modoff.offset).cloned(),
+            Some(cache) => cache.offset(&modoff.offset),
             None => None,
         }
     }
@@ -272,8 +271,8 @@ impl SrcView {
     ///     println!(" - {}", path.display());
     /// }
     /// ```
-    pub fn paths(&self) -> impl Iterator<Item = &PathBuf> {
-        let mut r: BTreeSet<&PathBuf> = BTreeSet::new();
+    pub fn paths(&self) -> impl Iterator<Item = &Path> {
+        let mut r: BTreeSet<&Path> = BTreeSet::new();
 
         for cache in self.0.values() {
             for pb in cache.paths() {

@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
+use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::io::Write;
@@ -15,7 +16,7 @@ use crate::{SrcLine, SrcView};
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 struct FileCov {
-    symbols: BTreeMap<String, BTreeSet<SrcLine>>,
+    symbols: BTreeMap<String, BTreeSet<SrcLine<'static>>>,
     lines: Vec<usize>,
     hits: Vec<usize>,
 }
@@ -105,7 +106,7 @@ impl Report {
         srcview: &SrcView,
         include: &Option<Regex>,
     ) -> Result<BTreeMap<PathBuf, FileCov>> {
-        let uniq_cov: BTreeSet<SrcLine> = coverage.iter().cloned().collect();
+        let uniq_cov: BTreeSet<SrcLine<'static>> = coverage.iter().map(|b| b.to_owned()).collect();
 
         let mut filecov = BTreeMap::new();
 
@@ -119,7 +120,7 @@ impl Report {
                 .ok_or_else(|| {
                     format_err!("unable to find path lines in path: {}", path.display())
                 })?
-                .map(|line| SrcLine::new(path, line));
+                .map(|line| SrcLine::new(Cow::Borrowed(path), line));
 
             let mut lines = vec![];
             let mut hits = vec![];
@@ -128,7 +129,7 @@ impl Report {
             for srcloc in path_srclocs {
                 lines.push(srcloc.line);
 
-                if uniq_cov.contains(&srcloc) {
+                if uniq_cov.contains(&srcloc.to_owned()) {
                     hits.push(srcloc.line);
                 }
             }
@@ -138,10 +139,10 @@ impl Report {
 
             if let Some(path_symbols) = srcview.path_symbols(path) {
                 for symbol in path_symbols {
-                    let symbol_srclocs: BTreeSet<SrcLine> = srcview
+                    let symbol_srclocs: BTreeSet<SrcLine<'static>> = srcview
                         .symbol(&symbol)
                         .ok_or_else(|| format_err!("unable to resolve symbol: {}", symbol))?
-                        .cloned()
+                        .map(|ps| ps.to_owned())
                         .collect();
 
                     symbols.insert(symbol, symbol_srclocs);
@@ -149,7 +150,7 @@ impl Report {
             }
 
             filecov.insert(
-                path.clone(),
+                path.to_path_buf(),
                 FileCov {
                     lines,
                     hits,
@@ -443,12 +444,12 @@ impl Report {
                 let file_srclocs: BTreeSet<SrcLine> = filecov
                     .lines
                     .iter()
-                    .map(|line| SrcLine::new(path, *line))
+                    .map(|line| SrcLine::new(Cow::Borrowed(path), *line))
                     .collect();
                 let hit_srclocs: BTreeSet<SrcLine> = filecov
                     .hits
                     .iter()
-                    .map(|line| SrcLine::new(path, *line))
+                    .map(|line| SrcLine::new(Cow::Borrowed(path), *line))
                     .collect();
 
                 ew.write_event(Event::Start(
@@ -480,7 +481,7 @@ impl Report {
                 for (symbol, symbol_srclocs) in filecov.symbols.iter() {
                     let mut symbol_hits = 0;
                     for hit in &hit_srclocs {
-                        if symbol_srclocs.contains(hit) {
+                        if symbol_srclocs.contains(&hit.to_owned()) {
                             symbol_hits += 1;
                         }
                     }
@@ -508,7 +509,7 @@ impl Report {
                     ew.write_event(Event::Start(BytesStart::new("lines")))?;
 
                     for srcloc in symbol_srclocs {
-                        let hits = if hit_srclocs.contains(srcloc) {
+                        let hits = if hit_srclocs.contains(&srcloc) {
                             "1"
                         } else {
                             "0"
